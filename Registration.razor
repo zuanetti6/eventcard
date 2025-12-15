@@ -1,0 +1,445 @@
+@page "/registration/{EventId:int}"
+@using Myblazorapp.Models
+@using Myblazorapp.Services
+@using Microsoft.AspNetCore.Components.Forms
+@inject EventService EventService
+@inject AttendanceService AttendanceService
+@inject SessionService SessionService
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JS
+
+<PageTitle>Event Registration - EventEase</PageTitle>
+
+<div class="container registration-page">
+    @if (!isLoaded)
+    {
+        <div class="loading">
+            <p>Loading registration form...</p>
+        </div>
+    }
+    else if (eventItem == null)
+    {
+        <div class="not-found">
+            <h2>Event not found</h2>
+            <p>The event for registration was not found.</p>
+            <button class="btn btn-primary" @onclick='() => NavigationManager.NavigateTo("/events")'>Back to Events</button>
+        </div>
+    }
+    else
+    {
+        <div class="registration-header">
+            <h1>Event Registration</h1>
+            <p class="subtitle">Complete your registration for <strong>@eventItem.Name</strong></p>
+        </div>
+
+        <div class="registration-container">
+            <div class="event-summary">
+                <h3>Event Summary</h3>
+                <div class="summary-item">
+                    <span class="summary-label">Event:</span>
+                    <span>@eventItem.Name</span>
+                </div>
+                <div class="summary-item">
+                    <span class="summary-label">Date:</span>
+                    <span>@eventItem.Date.ToString("MMMM d, yyyy")</span>
+                </div>
+                <div class="summary-item">
+                    <span class="summary-label">Location:</span>
+                    <span>@eventItem.Location</span>
+                </div>
+                <div class="summary-item">
+                    <span class="summary-label">Price:</span>
+                    <span class="price">$@eventItem.Price.ToString("F2")</span>
+                </div>
+                <hr />
+                <div class="summary-total">
+                    <span>Total:</span>
+                    <span class="total-price">$@eventItem.Price.ToString("F2")</span>
+                </div>
+            </div>
+
+            <EditForm Model="registrationModel" OnValidSubmit="HandleValidRegistration">
+                <DataAnnotationsValidator />
+                <ValidationSummary />
+
+                <h3>Attendee Information</h3>
+
+                <div class="form-group">
+                    <label for="firstName">First Name *</label>
+                    <InputText id="firstName" class="form-control" @bind-Value="registrationModel.FirstName" />
+                    <ValidationMessage For="() => registrationModel.FirstName" />
+                </div>
+
+                <div class="form-group">
+                    <label for="lastName">Last Name *</label>
+                    <InputText id="lastName" class="form-control" @bind-Value="registrationModel.LastName" />
+                    <ValidationMessage For="() => registrationModel.LastName" />
+                </div>
+
+                <div class="form-group">
+                    <label for="email">Email Address *</label>
+                    <InputText id="email" class="form-control" @bind-Value="registrationModel.Email" />
+                    <ValidationMessage For="() => registrationModel.Email" />
+                </div>
+
+                <div class="form-group">
+                    <label for="phone">Phone Number *</label>
+                    <InputText id="phone" class="form-control" @bind-Value="registrationModel.Phone" />
+                    <ValidationMessage For="() => registrationModel.Phone" />
+                </div>
+
+                <div class="form-group">
+                    <label for="company">Company/Organization</label>
+                    <InputText id="company" class="form-control" @bind-Value="registrationModel.Company" />
+                </div>
+
+                <div class="form-group">
+                    <label for="comments">Special Requests or Comments</label>
+                    <InputTextArea id="comments" class="form-control" @bind-Value="registrationModel.Comments" Rows="4" />
+                </div>
+
+                <div class="form-group checkbox">
+                    <InputCheckbox id="terms" @bind-Value="agreedToTerms" />
+                    <label for="terms">I agree to the terms and conditions *</label>
+                    <ValidationMessage For="() => agreedToTerms" />
+                </div>
+
+                <div class="form-group checkbox">
+                    <InputCheckbox id="rememberMe" @bind-Value="rememberMe" />
+                    <label for="rememberMe">Remember my details for this session</label>
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary" disabled="@(!IsFormValid())">
+                        Complete Registration
+                    </button>
+                    <button type="button" class="btn btn-secondary" @onclick="GoBack">
+                        Back
+                    </button>
+                </div>
+
+                @if (!string.IsNullOrEmpty(successMessage))
+                {
+                    <div class="success-message">
+                        ✓ @successMessage
+                    </div>
+                }
+
+                @if (!string.IsNullOrEmpty(errorMessage))
+                {
+                    <div class="error-message">
+                        ✗ @errorMessage
+                    </div>
+                }
+            </EditForm>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public int EventId { get; set; }
+
+    private Event? eventItem;
+    private bool isLoaded = false;
+
+    // Form model
+    private RegistrationModel registrationModel = new();
+    private bool agreedToTerms = false;
+    private bool rememberMe = false;
+
+    // Messages
+    private string successMessage = string.Empty;
+    private string errorMessage = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        eventItem = await EventService.GetEventByIdAsync(EventId);
+
+        // Try to prefill from session
+        var session = await SessionService.GetCurrentAsync();
+        if (session != null)
+        {
+            registrationModel.Email = session.Email;
+            registrationModel.FirstName = session.DisplayName?.Split(' ').FirstOrDefault() ?? string.Empty;
+            // leave other fields for user
+        }
+
+        isLoaded = true;
+    }
+
+    private bool IsFormValid()
+    {
+        var context = new ValidationContext(registrationModel);
+        var results = new List<ValidationResult>();
+        var valid = Validator.TryValidateObject(registrationModel, context, results, true) && agreedToTerms;
+        return valid;
+    }
+
+    private async Task HandleValidRegistration()
+    {
+        try
+        {
+            // Attempt to register seats
+            var success = await EventService.RegisterForEventAsync(EventId);
+            if (!success)
+            {
+                errorMessage = "Registration failed: event may be full or unavailable.";
+                return;
+            }
+
+            // Record attendance
+            await AttendanceService.RegisterAttendanceAsync(EventId, registrationModel.Email);
+
+            // Optionally persist session for this browser session
+            if (rememberMe)
+            {
+                await SessionService.SignInAsync(new Myblazorapp.Models.UserSession
+                {
+                    Email = registrationModel.Email,
+                    DisplayName = $"{registrationModel.FirstName} {registrationModel.LastName}",
+                    SignedInAt = DateTime.UtcNow
+                });
+            }
+
+            successMessage = $"Thank you, {registrationModel.FirstName}! Your registration for {eventItem?.Name ?? "the event"} is complete. A confirmation has been sent to {registrationModel.Email}.";
+            errorMessage = string.Empty;
+
+            await Task.Delay(1200);
+            NavigationManager.NavigateTo("/events");
+        }
+        catch
+        {
+            errorMessage = "An error occurred during registration. Please try again.";
+        }
+    }
+
+    private void GoBack()
+    {
+        NavigationManager.NavigateTo($"/event/{EventId}");
+    }
+}
+
+<style>
+    .registration-page {
+        padding: 2rem 0;
+    }
+
+    .registration-header {
+        text-align: center;
+        margin-bottom: 3rem;
+    }
+
+    .registration-header h1 {
+        font-size: 2.2rem;
+        margin: 0 0 0.5rem 0;
+        color: #0b2545;
+    }
+
+    .subtitle {
+        font-size: 1.1rem;
+        color: #556b77;
+        margin: 0;
+    }
+
+    .registration-container {
+        display: grid;
+        grid-template-columns: 1fr 1.5fr;
+        gap: 2rem;
+        max-width: 1000px;
+        margin: 0 auto;
+    }
+
+    .event-summary {
+        background: #fbfdff;
+        padding: 2rem;
+        border-radius: 8px;
+        height: fit-content;
+        border: 1px solid #e6eef6;
+    }
+
+    .event-summary h3 {
+        margin-top: 0;
+        color: #0b2545;
+        font-size: 1.3rem;
+    }
+
+    .summary-item {
+        display: flex;
+        justify-content: space-between;
+        padding: 0.75rem 0;
+        font-size: 0.95rem;
+        color: #556b77;
+    }
+
+    .summary-label {
+        font-weight: 600;
+    }
+
+    .event-summary hr {
+        margin: 1rem 0;
+        border: none;
+        border-top: 1px solid #e6eef6;
+    }
+
+    .summary-total {
+        display: flex;
+        justify-content: space-between;
+        font-weight: 700;
+        font-size: 1.1rem;
+        color: #0b2545;
+    }
+
+    .price {
+        color: #0b84ff;
+        font-weight: 700;
+    }
+
+    .total-price {
+        color: #0b84ff;
+    }
+
+    form {
+        background: white;
+        padding: 2rem;
+        border-radius: 8px;
+        border: 1px solid #e6eef6;
+    }
+
+    form h3 {
+        margin-top: 0;
+        color: #0b2545;
+        font-size: 1.2rem;
+    }
+
+    .form-group {
+        margin-bottom: 1.5rem;
+    }
+
+    .form-group label {
+        display: block;
+        margin-bottom: 0.5rem;
+        font-weight: 600;
+        color: #0b2545;
+    }
+
+    .form-group input[type="text"],
+    .form-group input[type="email"],
+    .form-group input[type="tel"],
+    .form-group textarea {
+        width: 100%;
+        padding: 0.75rem;
+        border: 1px solid #e6eef6;
+        border-radius: 6px;
+        font-size: 1rem;
+        font-family: inherit;
+    }
+
+    .form-group textarea {
+        resize: vertical;
+    }
+
+    .form-group.checkbox {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.75rem;
+    }
+
+    .form-group.checkbox input[type="checkbox"] {
+        margin-top: 0.25rem;
+        width: auto;
+    }
+
+    .form-group.checkbox label {
+        margin: 0;
+        font-weight: 500;
+    }
+
+    .error {
+        display: block;
+        color: #b00020;
+        font-size: 0.85rem;
+        margin-top: 0.25rem;
+    }
+
+    .form-actions {
+        display: flex;
+        gap: 1rem;
+        margin-top: 2rem;
+    }
+
+    .btn {
+        padding: 0.75rem 1.5rem;
+        border: none;
+        border-radius: 6px;
+        font-size: 1rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        flex: 1;
+    }
+
+    .btn-primary {
+        background: #0b84ff;
+        color: white;
+    }
+
+    .btn-primary:hover:not(:disabled) {
+        background: #0a70d5;
+    }
+
+    .btn-secondary {
+        background: #f0f4f8;
+        color: #0b2545;
+        border: 1px solid #e6eef6;
+    }
+
+    .btn-secondary:hover {
+        background: #e6eef6;
+    }
+
+    .btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+
+    .success-message {
+        margin-top: 1.5rem;
+        padding: 1rem;
+        background: #e6ffed;
+        color: #014d16;
+        border-radius: 6px;
+        border-left: 4px solid #0ab01a;
+    }
+
+    .error-message {
+        margin-top: 1.5rem;
+        padding: 1rem;
+        background: #ffebee;
+        color: #b00020;
+        border-radius: 6px;
+        border-left: 4px solid #c41c3b;
+    }
+
+    .loading {
+        text-align: center;
+        padding: 3rem;
+        color: #556b77;
+    }
+
+    .container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 0 1rem;
+    }
+
+    @@media (max-width: 768px) {
+        .registration-container {
+            grid-template-columns: 1fr;
+        }
+
+        .form-actions {
+            flex-direction: column;
+        }
+    }
+</style>

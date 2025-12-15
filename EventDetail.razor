@@ -1,0 +1,294 @@
+@page "/event/{EventId:int}"
+@using Myblazorapp.Models
+@using Myblazorapp.Services
+@inject EventService EventService
+@inject NavigationManager NavigationManager
+
+<PageTitle>@(eventItem?.Name ?? "Event Details") - EventEase</PageTitle>
+
+<div class="container event-detail-page">
+    @if (!isLoaded)
+    {
+        <div class="loading">
+            <p>Loading event details...</p>
+        </div>
+    }
+    else if (eventItem == null)
+    {
+        <div class="not-found">
+            <h2>Event not found</h2>
+            <p>The event you're looking for doesn't exist or may have been removed.</p>
+            <button class="btn btn-primary" @onclick='() => NavigationManager.NavigateTo("/events")'>Back to Events</button>
+        </div>
+    }
+    else
+    {
+        <div class="back-link">
+            <button class="btn btn-secondary" @onclick="GoBack">← Back to Events</button>
+        </div>
+
+        <div class="event-detail-container">
+            <div class="event-detail-image">
+                <img src="@eventItem.ImageUrl" alt="@eventItem.Name" />
+            </div>
+
+            <div class="event-detail-content">
+                <span class="event-category">@eventItem.Category</span>
+                <h1>@eventItem.Name</h1>
+
+                <div class="event-detail-meta">
+                    <div class="meta-item">
+                        <span class="meta-icon">📅</span>
+                        <div>
+                            <strong>Date</strong>
+                            <p>@eventItem.Date.ToString("dddd, MMMM d, yyyy")</p>
+                        </div>
+                    </div>
+                    <div class="meta-item">
+                        <span class="meta-icon">🕐</span>
+                        <div>
+                            <strong>Time</strong>
+                            <p>@eventItem.Date.ToString("h:mm tt")</p>
+                        </div>
+                    </div>
+                    <div class="meta-item">
+                        <span class="meta-icon">📍</span>
+                        <div>
+                            <strong>Location</strong>
+                            <p>@eventItem.Location</p>
+                        </div>
+                    </div>
+                    <div class="meta-item">
+                        <span class="meta-icon">💰</span>
+                        <div>
+                            <strong>Price</strong>
+                            <p>$@eventItem.Price.ToString("F2")</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="event-availability">
+                    <strong>Available Seats:</strong>
+                    <div class="seat-status @(eventItem.AvailableSeats > 20 ? "status-available" : "status-limited")">
+                        @eventItem.AvailableSeats seats remaining
+                    </div>
+                </div>
+
+                <div class="event-description">
+                    <h2>About this Event</h2>
+                    <p>@eventItem.Description</p>
+                </div>
+
+                <div class="action-buttons">
+                    <button class="btn btn-primary" 
+                            @onclick="() => RegisterForEvent(eventItem.Id)"
+                            disabled="@(eventItem.AvailableSeats == 0)">
+                        @(eventItem.AvailableSeats == 0 ? "Event Full" : "Register Now")
+                    </button>
+                    <button class="btn btn-secondary" @onclick="GoBack">Cancel</button>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public int EventId { get; set; }
+
+    private Event? eventItem;
+    private bool isLoaded = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        eventItem = await EventService.GetEventByIdAsync(EventId);
+        isLoaded = true;
+    }
+
+    private void GoBack()
+    {
+        NavigationManager.NavigateTo("/events");
+    }
+
+    private async Task RegisterForEvent(int eventId)
+    {
+        var success = await EventService.RegisterForEventAsync(eventId);
+        if (success)
+        {
+            NavigationManager.NavigateTo($"/registration/{eventId}");
+        }
+        else
+        {
+            // Handle registration failure
+            StateHasChanged();
+        }
+    }
+}
+
+<style>
+    .event-detail-page {
+        padding: 2rem 0;
+    }
+
+    .back-link {
+        margin-bottom: 2rem;
+    }
+
+    .btn-secondary {
+        background: #f0f4f8;
+        color: #0b2545;
+        border: 1px solid #e6eef6;
+    }
+
+    .btn-secondary:hover {
+        background: #e6eef6;
+    }
+
+    .event-detail-container {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 3rem;
+        margin-bottom: 3rem;
+    }
+
+    .event-detail-image {
+        height: 100%;
+    }
+
+    .event-detail-image img {
+        width: 100%;
+        border-radius: 12px;
+        object-fit: cover;
+    }
+
+    .event-detail-content h1 {
+        font-size: 2.2rem;
+        margin: 1rem 0;
+        color: #0b2545;
+    }
+
+    .event-category {
+        display: inline-block;
+        background: #0b84ff;
+        color: white;
+        padding: 0.5rem 1rem;
+        border-radius: 20px;
+        font-weight: 600;
+        font-size: 0.9rem;
+    }
+
+    .event-detail-meta {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1.5rem;
+        margin: 2rem 0;
+        padding: 1.5rem;
+        background: #fbfdff;
+        border-radius: 8px;
+    }
+
+    .meta-item {
+        display: flex;
+        gap: 1rem;
+    }
+
+    .meta-icon {
+        font-size: 1.5rem;
+    }
+
+    .meta-item strong {
+        display: block;
+        color: #0b2545;
+        margin-bottom: 0.25rem;
+    }
+
+    .meta-item p {
+        margin: 0;
+        color: #556b77;
+    }
+
+    .event-availability {
+        margin: 1.5rem 0;
+    }
+
+    .event-availability strong {
+        display: block;
+        margin-bottom: 0.5rem;
+        color: #0b2545;
+    }
+
+    .seat-status {
+        display: inline-block;
+        padding: 0.5rem 1rem;
+        border-radius: 6px;
+        font-weight: 600;
+    }
+
+    .status-available {
+        background: #e6ffed;
+        color: #014d16;
+    }
+
+    .status-limited {
+        background: #fff5e6;
+        color: #b8680b;
+    }
+
+    .event-description {
+        margin: 2rem 0;
+    }
+
+    .event-description h2 {
+        font-size: 1.5rem;
+        margin-bottom: 1rem;
+        color: #0b2545;
+    }
+
+    .event-description p {
+        line-height: 1.7;
+        color: #556b77;
+        font-size: 1.05rem;
+    }
+
+    .action-buttons {
+        display: flex;
+        gap: 1rem;
+        margin-top: 2rem;
+    }
+
+    .btn {
+        flex: 1;
+    }
+
+    .btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+
+    .loading {
+        text-align: center;
+        padding: 3rem;
+        color: #556b77;
+    }
+
+    .container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 0 1rem;
+    }
+
+    @@media (max-width: 768px) {
+        .event-detail-container {
+            grid-template-columns: 1fr;
+            gap: 2rem;
+        }
+
+        .event-detail-meta {
+            grid-template-columns: 1fr;
+        }
+
+        .action-buttons {
+            flex-direction: column;
+        }
+    }
+</style>

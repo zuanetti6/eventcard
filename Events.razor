@@ -1,0 +1,79 @@
+@page "/events"
+@using Microsoft.AspNetCore.Components.Web.Virtualization
+@using Myblazorapp.Models
+@using Myblazorapp.Services
+@using Microsoft.AspNetCore.Components
+@using Myblazorapp.Components
+@inject EventService EventService
+@inject NavigationManager NavigationManager
+
+<PageTitle>Browse Events - EventEase</PageTitle>
+
+<div class="container events-page">
+	<h1>Upcoming Events</h1>
+	<p class="subtitle">Discover and register for amazing corporate and social events</p>
+
+	@if (events == null)
+	{
+		<p class="loading">Loading events...</p>
+	}
+	else if (events.Count == 0)
+	{
+		<p class="no-events">No events available at the moment.</p>
+	}
+	else
+	{
+		<div class="events-grid">
+			<Virtualize Items="events" Context="ev">
+				<ItemContent>
+					<EventCard Event="ev" />
+				</ItemContent>
+			</Virtualize>
+		</div>
+	}
+</div>
+
+@code {
+	private List<Event> events;
+
+	protected override async Task OnInitializedAsync()
+	{
+		events = await EventService.GetAllEventsAsync();
+	}
+
+	private void ViewEventDetails(int eventId)
+	{
+		NavigationManager.NavigateTo($"/event/{eventId}");
+	}
+}
+
+<style>
+	.events-page {
+		padding: 2rem 0;
+	}
+
+	.events-page h1 {
+		font-size: 2.5rem;
+		margin-bottom: 0.5rem;
+		color: #0b2545;
+	}
+
+	.subtitle {
+		font-size: 1.1rem;
+		color: #556b77;
+		margin-bottom: 2rem;
+	}
+
+	.events-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+		gap: 2rem;
+		margin-top: 2rem;
+	}
+
+	.container {
+		max-width: 1200px;
+		margin: 0 auto;
+		padding: 0 1rem;
+	}
+</style>
